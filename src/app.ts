@@ -1,7 +1,7 @@
 import { ApolloServer, gql } from "apollo-server";
 import { sequelize, Todo } from "./model";
 
-sequelize.sync({ force: true });
+sequelize.sync({ force: false });
 
 const typeDefs = gql`
   type Query {
@@ -27,7 +27,6 @@ const typeDefs = gql`
 const resolvers = {
   Query: {
     async todoList(parent: any, args: any, context: any, info: any) {
-      console.log(info);
       const result = await Todo.findAll();
       return result;
     },
