@@ -1,55 +1,90 @@
 import { ApolloServer, gql } from "apollo-server";
-import { sequelize, Todo } from "./model";
+import { sequelize } from "./model";
+import { Post } from "./model/post";
+import { User } from "./model/user";
+import DataLoader from "dataloader";
 
 sequelize.sync({ force: false });
 
 const typeDefs = gql`
   type Query {
-    todoList: [Todo]
+    users: [User]
+    posts: [Post]
   }
   type Mutation {
-    createTodoItem(createdBy: String, content: String): Todo
-    modifyTodoItem(id: Int, createdBy: String, content: String): Update
-    deleteTodoItem(id: Int): Update
+    createUser(name: String): User
+    createPost(userId: Int, content: String): Post
   }
-  type Todo {
+  type Post {
     id: Int
-    createdBy: String
+    userId: Int
     content: String
     createdAt: String
     updatedAt: String
+    user: User
+  }
+  type User {
+    id: Int
+    name: String
+    createdAt: String
+    updatedAt: String
+    posts: [Post]
   }
   type Update {
     updatedRows: Int
   }
 `;
 
+const context = () => ({
+  postLoader: new DataLoader<number, Post[]>(async (userIds) => {
+    const posts = await Post.findAll({
+      where: {
+        userId: userIds,
+      },
+    });
+
+    return userIds.map((userId) =>
+      posts.filter((post) => post.userId === userId),
+    );
+  }),
+});
+
 const resolvers = {
   Query: {
-    async todoList(parent: any, args: any, context: any, info: any) {
-      const result = await Todo.findAll();
+    async users(parent: any, args: any, context: any, info: any) {
+      const result = await User.findAll();
+      return result;
+    },
+    async posts(parent: any, args: any, context: any, info: any) {
+      const result = await Post.findAll();
+      return result;
+    },
+  },
+  Post: {
+    async user(parent: any, args: any, context: any, info: any) {
+      const result = await User.findByPk(parent.userId);
+      return result;
+    },
+  },
+  User: {
+    async posts(parent: any, args: any, context: any, info: any) {
+      const result = await context.postLoader.load(parent.id);
       return result;
     },
   },
   Mutation: {
-    async createTodoItem(parent: any, args: any, context: any, info: any) {
-      const result = await Todo.create(args);
+    async createUser(parent: any, args: any, context: any, info: any) {
+      const result = await User.create(args);
       return result;
     },
-    async modifyTodoItem(parent: any, args: any, context: any, info: any) {
-      const result = await Todo.update(args, {
-        where: { id: args.id },
-      });
-      return { updatedRows: result[0] };
-    },
-    async deleteTodoItem(parent: any, args: any, context: any, info: any) {
-      const result = await Todo.destroy({ where: { id: args.id } });
-      return { updatedRows: result };
+    async createPost(parent: any, args: any, context: any, info: any) {
+      const result = await Post.create(args);
+      return result;
     },
   },
 };
 
-const server = new ApolloServer({ typeDefs, resolvers });
+const server = new ApolloServer({ typeDefs, resolvers, context });
 
 server.listen().then(({ url }) => {
   console.log("Server running on", url);
